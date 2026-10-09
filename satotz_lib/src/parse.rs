@@ -33,12 +33,12 @@ pub fn parse_dimacs_cnf(input: &str) -> IResult<&str, Vec<Vec<i32>>> {
 pub fn parse(input: &str) -> Result<Vec<Vec<i32>>, String> {
     match parse_dimacs_cnf(input) {
         Ok((_, clauses)) => Ok(clauses),
-        Err(nom::Err::Error(e) | nom::Err::Failure(e)) => Err(unexpected(e.input)),
+        Err(nom::Err::Error(e) | nom::Err::Failure(e)) => Err(unexpected(input, e.input)),
         Err(nom::Err::Incomplete(_)) => Err("parsing error".to_string()),
     }
 }
 
-fn unexpected(rest: &str) -> String {
+fn unexpected(input: &str, rest: &str) -> String {
     let line: String = rest
         .lines()
         .next()
@@ -46,7 +46,15 @@ fn unexpected(rest: &str) -> String {
         .chars()
         .take(60)
         .collect();
-    format!("unexpected input at '{line}'").to_string()
+    let consumed = &input[..input.len() - rest.len()];
+    if consumed
+        .lines()
+        .all(|l| l.trim().is_empty() || l.starts_with('c'))
+    {
+        format!("expected 'p cnf' header, found '{line}'")
+    } else {
+        format!("unexpected input at '{line}'")
+    }
 }
 
 #[cfg(test)]
@@ -104,5 +112,17 @@ mod tests {
         let input = "1 0\n-1 2 0\n";
         let result = parse_dimacs_cnf(input).expect("parse error").1;
         assert_eq!(result, vec![vec![1], vec![-1, 2]]);
+    }
+
+    #[test]
+    fn test_missing_header_error() {
+        let err = parse("c comment\n.gradle/\n").unwrap_err();
+        assert_eq!(err, "expected 'p cnf' header, found '.gradle/'");
+    }
+
+    #[test]
+    fn test_unexpected_input_error() {
+        let err = parse("p cnf 1 1\n1 x 0\n").unwrap_err();
+        assert!(err.starts_with("unexpected input at"));
     }
 }
